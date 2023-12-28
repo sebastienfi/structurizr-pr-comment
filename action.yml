@@ -1,0 +1,98 @@
+name: 'Comment on PR with Structurizr Diagrams'
+description: 'Automatically comments on PRs with Structurizr diagrams.'
+branding:
+  icon: 'activity'
+  color: 'white'
+runs:
+  using: 'composite'
+  steps:
+    - name: Get PR Info
+      run: |
+        PREVIOUS_JOB_ID=$(jq -r '.id' <<< "$WORKFLOW_RUN_EVENT_OBJ")
+        echo "Previous Job ID: $PREVIOUS_JOB_ID"
+        echo "PREVIOUS_JOB_ID=$PREVIOUS_JOB_ID" >> "$GITHUB_ENV"
+
+        PR_NUMBER=$(jq -r '.pull_requests[0].number' \
+        <<< "$WORKFLOW_RUN_EVENT_OBJ")
+
+        echo "PR Number: $PR_NUMBER"
+        echo "PR_NUMBER=$PR_NUMBER" >> "$GITHUB_ENV"
+
+        HEAD_SHA=$(jq -r '.pull_requests[0].head.sha' \
+        <<< "$WORKFLOW_RUN_EVENT_OBJ")
+
+        echo "Head sha: $HEAD_SHA"
+        echo "HEAD_SHA=$HEAD_SHA" >> "$GITHUB_ENV"
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        WORKFLOW_RUN_EVENT_OBJ: ${{ toJSON(github.event.workflow_run) }}
+
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.workflow_run.head_branch }}
+
+    - name: List Diagram Files
+      run: |
+        cd ${{ env.OUTPUT_DIR }}
+        echo 'PNG_FILES_MARKDOWN<<EOF' >> "$GITHUB_ENV"
+        for png_file in *.png; do
+          # Skip legend files in this loop
+          if [[ $png_file == *"-key.png" ]]; then
+            continue
+          fi
+
+          base_name=$(basename $png_file .png)
+          legend_file="${base_name}-key.png"
+
+          # URLs for diagram and its legend
+          png_raw_file_path="https://raw.githubusercontent.com/${{ github.repository }}/${{ env.HEAD_SHA }}/${{ env.OUTPUT_DIR }}/${png_file}"
+          legend_raw_file_path="https://raw.githubusercontent.com/${{ github.repository }}/${{ env.HEAD_SHA }}/${{ env.OUTPUT_DIR }}/${legend_file}"
+          
+          echo "<details>" >> "$GITHUB_ENV"
+          clean_base_name=${base_name#structurizr-}
+          echo "<summary>${clean_base_name}</summary>" >> "$GITHUB_ENV"
+          if [ -f "$legend_file" ]; then
+            echo "<img src=\"${legend_raw_file_path}\">" >> "$GITHUB_ENV"
+            echo "" >> "$GITHUB_ENV"
+            fi
+          echo " <img src=\"${png_raw_file_path}\">" >> "$GITHUB_ENV"
+          echo "</details>" >> "$GITHUB_ENV"
+        done
+        echo EOF >> "$GITHUB_ENV"
+      shell: bash
+      env:
+        OUTPUT_DIR: 'docs/diagrams'
+        HEAD_SHA: ${{ env.HEAD_SHA }}
+
+    - name: Find Comment
+      uses: peter-evans/find-comment@v2
+      id: find-comment
+      env:
+        PR_NUMBER: ${{ env.PR_NUMBER }}
+      with:
+        issue-number: ${{ env.PR_NUMBER }}
+        comment-author: 'github-actions[bot]'
+
+    - name: Comment on PR
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        PR_NUMBER: ${{ env.PR_NUMBER }}
+        HEAD_SHA: ${{ env.HEAD_SHA }}
+        PREVIOUS_JOB_ID: ${{ env.PREVIOUS_JOB_ID }}
+        PNG_FILES_MARKDOWN: ${{ env.PNG_FILES_MARKDOWN }}
+        JOB_PATH: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ env.PREVIOUS_JOB_ID }}"
+      uses: peter-evans/create-or-update-comment@v3
+      with:
+        issue-number: ${{ env.PR_NUMBER }}
+        comment-id: ${{ steps.find-comment.outputs.comment-id }}
+        edit-mode: replace
+        reactions: |
+            heart
+            hooray
+        body: |
+            ## C4 Diagrams
+            Commit: ${{ env.HEAD_SHA }}
+            Logs: ${{ env.JOB_PATH }}
+            ${{ env.PNG_FILES_MARKDOWN }}
