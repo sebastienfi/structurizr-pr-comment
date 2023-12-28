@@ -3,10 +3,22 @@ description: 'Automatically comments on PRs with Structurizr diagrams.'
 branding:
   icon: 'activity'
   color: 'white'
+inputs:
+  repo-token:
+    description: 'GITHUB_TOKEN from secrets'
+    required: true
+  output-path:
+    description: 'Path to the generated images'
+    required: true
+    default: 'docs/diagrams'
+
 runs:
   using: 'composite'
   steps:
     - name: Get PR Info
+      env:
+        GITHUB_TOKEN: ${{ inputs.repo-token }}
+        WORKFLOW_RUN_EVENT_OBJ: ${{ toJSON(github.event.workflow_run) }}
       run: |
         PREVIOUS_JOB_ID=$(jq -r '.id' <<< "$WORKFLOW_RUN_EVENT_OBJ")
         echo "Previous Job ID: $PREVIOUS_JOB_ID"
@@ -24,18 +36,19 @@ runs:
         echo "Head sha: $HEAD_SHA"
         echo "HEAD_SHA=$HEAD_SHA" >> "$GITHUB_ENV"
       shell: bash
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        WORKFLOW_RUN_EVENT_OBJ: ${{ toJSON(github.event.workflow_run) }}
 
     - name: Checkout Repository
       uses: actions/checkout@v4
+      env:
+        GITHUB_TOKEN: ${{ inputs.repo-token }}
       with:
         ref: ${{ github.event.workflow_run.head_branch }}
 
     - name: List Diagram Files
+      env:
+        HEAD_SHA: ${{ env.HEAD_SHA }}
       run: |
-        cd ${{ env.OUTPUT_DIR }}
+        cd ${{ inputs.output-path }}
         echo 'PNG_FILES_MARKDOWN<<EOF' >> "$GITHUB_ENV"
         for png_file in *.png; do
           # Skip legend files in this loop
@@ -47,8 +60,8 @@ runs:
           legend_file="${base_name}-key.png"
 
           # URLs for diagram and its legend
-          png_raw_file_path="https://raw.githubusercontent.com/${{ github.repository }}/${{ env.HEAD_SHA }}/${{ env.OUTPUT_DIR }}/${png_file}"
-          legend_raw_file_path="https://raw.githubusercontent.com/${{ github.repository }}/${{ env.HEAD_SHA }}/${{ env.OUTPUT_DIR }}/${legend_file}"
+          png_raw_file_path="https://raw.githubusercontent.com/${{ github.repository }}/${{ env.HEAD_SHA }}/${{ inputs.output-path }}/${png_file}"
+          legend_raw_file_path="https://raw.githubusercontent.com/${{ github.repository }}/${{ env.HEAD_SHA }}/${{ inputs.output-path }}/${legend_file}"
           
           echo "<details>" >> "$GITHUB_ENV"
           clean_base_name=${base_name#structurizr-}
@@ -62,28 +75,26 @@ runs:
         done
         echo EOF >> "$GITHUB_ENV"
       shell: bash
-      env:
-        OUTPUT_DIR: 'docs/diagrams'
-        HEAD_SHA: ${{ env.HEAD_SHA }}
 
     - name: Find Comment
       uses: peter-evans/find-comment@v2
       id: find-comment
       env:
         PR_NUMBER: ${{ env.PR_NUMBER }}
+        GITHUB_TOKEN: ${{ inputs.repo-token }}
       with:
         issue-number: ${{ env.PR_NUMBER }}
         comment-author: 'github-actions[bot]'
 
     - name: Comment on PR
+      uses: peter-evans/create-or-update-comment@v3
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ inputs.repo-token }}
         PR_NUMBER: ${{ env.PR_NUMBER }}
         HEAD_SHA: ${{ env.HEAD_SHA }}
         PREVIOUS_JOB_ID: ${{ env.PREVIOUS_JOB_ID }}
         PNG_FILES_MARKDOWN: ${{ env.PNG_FILES_MARKDOWN }}
         JOB_PATH: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ env.PREVIOUS_JOB_ID }}"
-      uses: peter-evans/create-or-update-comment@v3
       with:
         issue-number: ${{ env.PR_NUMBER }}
         comment-id: ${{ steps.find-comment.outputs.comment-id }}
