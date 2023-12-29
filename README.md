@@ -4,6 +4,8 @@
 
 This GitHub Action, designed to complement the [Generate Structurizr Diagrams Images from DSL](https://github.com/marketplace/actions/generate-structurizr-diagrams-images-from-dsl) action, automatically comments on pull requests with the previously generated Structurizr diagrams. It ensures that team members can easily review the latest architecture diagrams directly within the context of a PR.
 
+-> [See this PR for a demo](https://github.com/sebastienfi/structurizr-github-actions-demo/pull/2).
+
 ## Prerequisites
 
 To use this action effectively, you should have:
@@ -31,6 +33,10 @@ jobs:
     comment-on-pr:
         if: github.event.workflow_run.conclusion == 'success'
         runs-on: ubuntu-latest
+        permissions:
+            contents: read # Allow to work with the contents of the repository, including git pull.
+            issues: write # Allow to comment on pull requests.
+            pull-requests: write # Allow to list and create pr's comments.
         steps:
         - uses: sebastienfi/structurizr-pr-comment@v1
           with:
