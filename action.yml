@@ -60,8 +60,8 @@ runs:
           legend_file="${base_name}-key.png"
 
           # URLs for diagram and its legend
-          png_raw_file_path="https://raw.githubusercontent.com/${{ github.repository }}/${{ env.HEAD_SHA }}/${{ inputs.output-path }}/${png_file}"
-          legend_raw_file_path="https://raw.githubusercontent.com/${{ github.repository }}/${{ env.HEAD_SHA }}/${{ inputs.output-path }}/${legend_file}"
+          png_raw_file_path="https://github.com/${{ github.repository }}/blob/${{ github.event.workflow_run.head_branch }}/${{ inputs.output-path }}/${png_file}?raw=true"
+          legend_raw_file_path="https://github.com/${{ github.repository }}/blob/${{ github.event.workflow_run.head_branch }}/${{ inputs.output-path }}/${legend_file}?raw=true"
           
           echo "<details>" >> "$GITHUB_ENV"
           clean_base_name=${base_name#structurizr-}
